@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Button } from "../ui/button";
-import { Trash2 } from "lucide-react";
+import { Edit2, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { Session } from "@supabase/supabase-js";
 import ExpenseForm from "../form/ExpenseForm";
@@ -15,6 +15,12 @@ export default function ExpensesPage({ session }: { session: Session }) {
   const [totalIncome, setTotalIncome] = useState(0);
   const [totalExpense, setTotalExpense] = useState(0);
   const [balance, setBalance] = useState(0);
+  const [newTitle, setNewTitle] = useState("");
+  const [newAmount, setNewAmount] = useState("");
+  const [newType, setNewType] = useState("");
+  const [newCategory, setNewCategory] = useState("");
+  const [newDate, setNewDate] = useState("");
+  const [editingId, setEditingId] = useState<number | null>(null);
 
   const [expenses, setExpenses] = useState<any[]>([]);
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">(
@@ -62,7 +68,13 @@ export default function ExpensesPage({ session }: { session: Session }) {
     }
   };
 
-  const deleteTask = async (id: number) => {
+  const filteredExpenses = expenses.filter((expense) =>
+    [expense.title, expense.category].some((field) =>
+      field.toLowerCase().includes(searchQuery.toLowerCase())
+    )
+  );
+
+  const deleteExpense = async (id: number) => {
     const { error } = await supabase.from("expenses").delete().eq("id", id);
 
     if (error) {
@@ -74,18 +86,45 @@ export default function ExpensesPage({ session }: { session: Session }) {
     fetchExpenses();
   };
 
+  const updateExpense = async (id: number) => {
+    if (!newTitle || !newAmount || !newType || !newCategory || !newDate) {
+      toast.error("Please fill all fields.");
+      return;
+    }
+
+    const amount = parseFloat(newAmount);
+    if (isNaN(amount)) {
+      toast.error("Amount must be a valid number.");
+      return;
+    }
+
+    const { error } = await supabase
+      .from("expenses")
+      .update({
+        title: newTitle,
+        amount,
+        type: newType,
+        category: newCategory,
+        date: newDate,
+      })
+      .eq("id", id);
+
+    if (error) {
+      console.error("Error updating expense:", error.message);
+      toast.error("Failed to update.");
+    } else {
+      toast.success("Expense updated: " + newTitle);
+      setEditingId(null);
+      fetchExpenses();
+    }
+  };
+
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
     if (error) {
       console.error("Error signing out:", error.message);
     }
   };
-
-  const filteredExpenses = expenses.filter((expense) =>
-    [expense.title, expense.category].some((field) =>
-      field.toLowerCase().includes(searchQuery.toLowerCase())
-    )
-  );
 
   useEffect(() => {
     fetchExpenses();
@@ -153,23 +192,94 @@ export default function ExpensesPage({ session }: { session: Session }) {
           filteredExpenses.map((expense) => (
             <div
               key={expense.id}
-              className="p-4 border rounded shadow flex justify-between"
+              className="p-4 border rounded shadow flex justify-between gap-4"
             >
-              <div>
-                <div className="font-semibold">
-                  {expense.title} - ${expense.amount}
-                </div>
-                <div className="text-sm text-gray-500">
-                  {expense.category} | {expense.type} | {expense.date}
-                </div>
+              <div className="flex-1">
+                {editingId === expense.id ? (
+                  <div className="space-y-2">
+                    <Input
+                      placeholder="Title"
+                      value={newTitle}
+                      onChange={(e) => setNewTitle(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Amount"
+                      type="number"
+                      value={newAmount}
+                      onChange={(e) => setNewAmount(e.target.value)}
+                    />
+                    <Input
+                      placeholder="Category"
+                      value={newCategory}
+                      onChange={(e) => setNewCategory(e.target.value)}
+                    />
+                    <select
+                      value={newType}
+                      onChange={(e) => setNewType(e.target.value)}
+                      className="border p-1.5 rounded w-full"
+                    >
+                      <option value="income">Income</option>
+                      <option value="expense">Expense</option>
+                    </select>
+                    <Input
+                      type="date"
+                      value={newDate}
+                      onChange={(e) => setNewDate(e.target.value)}
+                    />
+
+                    <div className="flex justify-end gap-2">
+                      <Button
+                        size="sm"
+                        onClick={() => updateExpense(expense.id)}
+                      >
+                        Save
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="secondary"
+                        onClick={() => setEditingId(null)}
+                      >
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <div className="font-semibold">
+                      {expense.title} - ${expense.amount}
+                    </div>
+                    <div className="text-sm text-gray-500">
+                      {expense.category} | {expense.type} | {expense.date}
+                    </div>
+                  </>
+                )}
               </div>
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={() => deleteTask(expense.id)}
-              >
-                <Trash2 className="w-4 h-4" />
-              </Button>
+
+              {editingId !== expense.id && (
+                <div className="flex items-start gap-2 flex-shrink-0">
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => {
+                      setEditingId(expense.id);
+                      setNewTitle(expense.title);
+                      setNewAmount(expense.amount.toString());
+                      setNewCategory(expense.category);
+                      setNewType(expense.type);
+                      setNewDate(expense.date);
+                    }}
+                  >
+                    <Edit2 className="w-4 h-4" />
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    size="sm"
+                    onClick={() => deleteExpense(expense.id)}
+                  >
+                    <Trash2 className="w-4 h-4" />
+                  </Button>
+                </div>
+              )}
             </div>
           ))
         )}

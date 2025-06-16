@@ -1,6 +1,6 @@
 "use client";
 
-import React from "react";
+import React, { useState } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -33,6 +33,7 @@ export default function ExpenseFormDialog({
   session: Session;
   onExpenseAdded: () => void;
 }) {
+  const [open, setOpen] = useState(false);
   const {
     register,
     handleSubmit,
@@ -61,10 +62,11 @@ export default function ExpenseFormDialog({
 
     onExpenseAdded();
     reset();
+    setOpen(false);
   };
 
   return (
-    <Dialog>
+    <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger asChild>
         <Button>Add Expense</Button>
       </DialogTrigger>
