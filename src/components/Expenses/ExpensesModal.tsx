@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabase/client";
 import { Button } from "../ui/button";
 import { Edit2, Trash2 } from "lucide-react";
@@ -10,6 +10,8 @@ import ExpenseForm from "../form/ExpenseForm";
 import dayjs from "dayjs";
 import { Input } from "../ui/input";
 import { formatCurrency } from "@/lib/utils";
+import DateRangeFilter from "../component/DateRangeFilter";
+import { DateRange } from "react-day-picker";
 
 export default function ExpensesPage({ session }: { session: Session }) {
   const [totalIncome, setTotalIncome] = useState(0);
@@ -21,7 +23,9 @@ export default function ExpensesPage({ session }: { session: Session }) {
   const [newCategory, setNewCategory] = useState("");
   const [newDate, setNewDate] = useState("");
   const [editingId, setEditingId] = useState<number | null>(null);
-
+  const [customDateRange, setCustomDateRange] = useState<
+    DateRange | undefined
+  >();
   const [expenses, setExpenses] = useState<any[]>([]);
   const [typeFilter, setTypeFilter] = useState<"all" | "income" | "expense">(
     "all"
@@ -31,14 +35,24 @@ export default function ExpensesPage({ session }: { session: Session }) {
   >("all");
   const [searchQuery, setSearchQuery] = useState("");
 
-  const fetchExpenses = async () => {
+  const fetchExpenses = useCallback(async () => {
     let query = supabase.from("expenses").select("*");
 
     if (typeFilter !== "all") {
       query = query.eq("type", typeFilter);
     }
 
-    if (dateFilter === "this_month") {
+    if (customDateRange?.from && customDateRange?.to) {
+      const from = dayjs(customDateRange.from).format("YYYY-MM-DD");
+      const to = dayjs(customDateRange.to).format("YYYY-MM-DD");
+      query = query.gte("date", from).lte("date", to);
+    } else if (customDateRange?.from) {
+      const from = dayjs(customDateRange.from).format("YYYY-MM-DD");
+      query = query.gte("date", from);
+    } else if (customDateRange?.to) {
+      const to = dayjs(customDateRange.to).format("YYYY-MM-DD");
+      query = query.lte("date", to);
+    } else if (dateFilter === "this_month") {
       const startOfMonth = dayjs().startOf("month").format("YYYY-MM-DD");
       query = query.gte("date", startOfMonth);
     } else if (dateFilter === "last_30_days") {
@@ -66,7 +80,11 @@ export default function ExpensesPage({ session }: { session: Session }) {
       setTotalExpense(expense);
       setBalance(income - expense);
     }
-  };
+  }, [typeFilter, dateFilter, customDateRange]);
+
+  useEffect(() => {
+    fetchExpenses();
+  }, [fetchExpenses]);
 
   const filteredExpenses = expenses.filter((expense) =>
     [expense.title, expense.category].some((field) =>
@@ -76,9 +94,7 @@ export default function ExpensesPage({ session }: { session: Session }) {
 
   const deleteExpense = async (id: number) => {
     const { error } = await supabase.from("expenses").delete().eq("id", id);
-
     if (error) {
-      console.error("Error deleting task:", error.message);
       toast.error("Failed to delete expense.");
       return;
     }
@@ -110,10 +126,9 @@ export default function ExpensesPage({ session }: { session: Session }) {
       .eq("id", id);
 
     if (error) {
-      console.error("Error updating expense:", error.message);
       toast.error("Failed to update.");
     } else {
-      toast.success("Expense updated: " + newTitle);
+      toast.success("Expense updated.");
       setEditingId(null);
       fetchExpenses();
     }
@@ -121,28 +136,25 @@ export default function ExpensesPage({ session }: { session: Session }) {
 
   const logout = async () => {
     const { error } = await supabase.auth.signOut();
-    if (error) {
-      console.error("Error signing out:", error.message);
-    }
+    if (error) console.error("Error signing out:", error.message);
   };
-
-  useEffect(() => {
-    fetchExpenses();
-  }, [typeFilter, dateFilter]);
 
   return (
     <div className="max-w-3xl mx-auto pt-8">
-      <div className="justify-between flex">
+      <div className="flex justify-between items-center">
         <Button onClick={logout}>Log out</Button>
         <span className="text-xl font-bold text-gray-900">
           {session.user.email}
         </span>
         <ExpenseForm session={session} onExpenseAdded={fetchExpenses} />
       </div>
+
       <div className="flex flex-wrap gap-3 mt-6 items-center justify-between">
         <select
           value={typeFilter}
-          onChange={(e) => setTypeFilter(e.target.value as any)}
+          onChange={(e) =>
+            setTypeFilter(e.target.value as "all" | "income" | "expense")
+          }
           className="border p-1.5 rounded-lg"
         >
           <option value="all">All Types</option>
@@ -152,7 +164,11 @@ export default function ExpensesPage({ session }: { session: Session }) {
 
         <select
           value={dateFilter}
-          onChange={(e) => setDateFilter(e.target.value as any)}
+          onChange={(e) =>
+            setDateFilter(
+              e.target.value as "all" | "this_month" | "last_30_days"
+            )
+          }
           className="border p-1.5 rounded-lg"
         >
           <option value="all">All Dates</option>
@@ -165,6 +181,14 @@ export default function ExpensesPage({ session }: { session: Session }) {
           placeholder="Search by title or category"
           value={searchQuery}
           onChange={(e) => setSearchQuery(e.target.value)}
+        />
+      </div>
+
+      <div className="py-4 space-y-2">
+        <DateRangeFilter
+          customDateRange={customDateRange}
+          setDateFilter={setDateFilter}
+          setCustomDateRange={setCustomDateRange}
         />
       </div>
 
@@ -226,7 +250,6 @@ export default function ExpensesPage({ session }: { session: Session }) {
                       value={newDate}
                       onChange={(e) => setNewDate(e.target.value)}
                     />
-
                     <div className="flex justify-end gap-2">
                       <Button
                         size="sm"
@@ -254,7 +277,6 @@ export default function ExpensesPage({ session }: { session: Session }) {
                   </>
                 )}
               </div>
-
               {editingId !== expense.id && (
                 <div className="flex items-start gap-2 flex-shrink-0">
                   <Button
